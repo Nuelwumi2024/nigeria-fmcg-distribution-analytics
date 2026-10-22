@@ -1,0 +1,39 @@
+// Model: sales[outlet_id] *-1 outlets[outlet_id]; sales[sku_id] *-1 products[sku_id];
+// a Date table related to sales[week_start]. Add the calculated columns below to `sales`.
+
+// Calculated columns on sales
+Revenue = sales[units] * sales[net_price]
+Gross Margin = sales[units] * ( sales[net_price] - sales[unit_cost] )
+
+// Measures
+Total Revenue = SUM ( sales[Revenue] )
+Total Gross Margin = SUM ( sales[Gross Margin] )
+GM % = DIVIDE ( [Total Gross Margin], [Total Revenue] )
+Active Outlets = DISTINCTCOUNT ( sales[outlet_id] )
+Revenue per Outlet = DIVIDE ( [Total Revenue], [Active Outlets] )
+
+// Like-for-like price vs cost (use with a SKU axis and two date ranges via a slicer)
+Avg Net Price = DIVIDE ( [Total Revenue], SUM ( sales[units] ) )
+Avg Unit Cost = DIVIDE ( SUMX ( sales, sales[units] * sales[unit_cost] ), SUM ( sales[units] ) )
+
+// Pareto: cumulative revenue share by SKU
+Cumulative Revenue % =
+VAR CurrentRev = [Total Revenue]
+VAR Cum =
+    SUMX ( FILTER ( ALLSELECTED ( products[sku_name] ), [Total Revenue] >= CurrentRev ), [Total Revenue] )
+RETURN DIVIDE ( Cum, CALCULATE ( [Total Revenue], ALLSELECTED ( products[sku_name] ) ) )
+
+ABC Class = IF ( [Cumulative Revenue %] - DIVIDE ( [Total Revenue], CALCULATE ( [Total Revenue], ALLSELECTED ( products[sku_name] ) ) ) < 0.8, "A", "B/C" )
+
+// Stock: days of cover and stock-out flag (stock table related to products and a region key)
+Stockout Days = SUM ( stock[stockout_days] )
+Days of Cover = DIVIDE ( SUM ( stock[closing_stock] ), SUM ( stock[units_sold] ) / 7 )
+
+// Silent outlets: bought in the last 26 weeks of the baseline but not in the last 12 weeks
+Last Purchase Week = MAX ( sales[week_start] )
+Silent Outlet =
+VAR MaxWk = CALCULATE ( MAX ( sales[week_start] ), ALL ( sales ) )
+RETURN IF ( [Last Purchase Week] < MaxWk - 84, 1, 0 )
+
+// Rep attainment (targets[month] as text yyyy-MM; relate to rep_id)
+Attainment % = DIVIDE ( [Total Revenue], SUM ( targets[target_revenue] ) )
